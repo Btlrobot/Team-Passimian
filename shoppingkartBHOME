@@ -1,0 +1,365 @@
+#region VEXcode Generated Robot Configuration
+from vex import *
+import urandom
+
+# Brain should be defined by default
+brain=Brain()
+
+# Robot configuration code
+brain_inertial = Inertial()
+rightMotor = Motor(Ports.PORT1, False)
+leftMotor = Motor(Ports.PORT6, True)
+gyro_3 = Gyro(Ports.PORT3)
+strafeMotor = Motor(Ports.PORT5, False)
+leftFly = Motor(Ports.PORT2, False)
+rightFly = Motor(Ports.PORT4, True)
+controller = Controller()
+pneumatic_10 = Pneumatic(Ports.PORT10)
+
+
+
+# generating and setting random seed
+def initializeRandomSeed():
+    wait(100, MSEC)
+    xaxis = brain_inertial.acceleration(XAXIS) * 1000
+    yaxis = brain_inertial.acceleration(YAXIS) * 1000
+    zaxis = brain_inertial.acceleration(ZAXIS) * 1000
+    systemTime = brain.timer.system() * 100
+    urandom.seed(int(xaxis + yaxis + zaxis + systemTime)) 
+    
+# Initialize random seed 
+initializeRandomSeed()
+
+#endregion VEXcode Generated Robot Configuration
+
+# ------------------------------------------
+# 
+# 	Project:      VEXcode Project
+# 	Author:       VEX
+# 	Created:
+# 	Description:  VEXcode IQ Python Project
+# 
+# ------------------------------------------
+
+# Library imports
+import math
+from vex import *
+
+# Begin project code
+class PIDController:
+    def __init__(self,kp,ki=0.0, kd = 0.0):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.prev_error = 0
+        self.integral = 0
+
+    def compute(self,setpoint,actual_value, dt = 1):
+        # calculate error
+
+        error = setpoint - actual_value
+
+        # propotional term
+        proportional = self.kp * error
+
+        #integral term (accumalate error over time)
+        self.integral += error * dt
+        integral = self.ki * self.integral
+
+        #derivate term (rate of error change)
+        derivative = self.kd * (error - self.prev_error) / dt
+        self.prev_error = error
+
+        # PID output
+        output = proportional + integral + derivative
+
+        return output
+
+# ODOMETRY CLASS
+class Odometry:
+    def __init__(self,robot):
+        self.robot = robot
+        self.x_pos = 0.0
+        self.y_pos = 0.0
+        self.head = 0.0
+
+    def update_position(self):
+
+        # get motor position (ticks)
+        left_ticks = self.robot.leftMotor.position(DEGREES)
+        right_ticks = self.robot.rightMotor.position(DEGREES)
+        strafe_ticks = self.robot.strafeMotor.position(DEGREES)
+
+
+        #convert our ticks to distance (adjusted with our gear ratio)
+        left_distance = left_ticks * self.robot.DISTANCE_PER_TICK
+        right_distance = right_ticks * self.robot.DISTANCE_PER_TICK
+        strafe_distance = strafe_ticks * self.robot.SDISTANCE_PER_TICK # strafe distance per tick
+
+        # forward position
+        forward_d = (left_distance + right_distance)/2
+
+        # calculate our heading
+        current_head = self.robot.gyro_3.rotation(DEGREES)
+        self.head = current_head
+
+
+        # calculate the new x and y position and heading
+        delta_x = forward_d * math.cos(math.radians(self.head)) + strafe_distance * math.sin(math.radians(self.head))
+        delta_y = forward_d * math.sin(math.radians(self.head)) - strafe_distance * math.cos(math.radians(self.head))
+        self.x_pos += delta_x
+        self.y_pos += delta_y
+
+
+        
+        self.robot.leftMotor.set_position(0,DEGREES)
+        self.robot.rightMotor.set_position(0,DEGREES)
+        self.robot.strafeMotor.set_position(0,DEGREES)
+        
+
+
+
+class Intake:
+    def __init__(self):
+        self.intake = Motor(Ports.PORT12, False)
+        self.speed = 0
+
+    def start_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(FORWARD)
+
+    def stop_intake(self):
+        self.intake.stop()
+
+    def reverse_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(REVERSE)
+
+    def set_speed(self,new_speed):
+        self.speed = new_speed
+        self.intake.set_velocity(self.speed,PERCENT)
+        self.intake.spin(FORWARD)
+
+    def get_speed(self):
+        return self.speed
+
+    
+
+class Flywheel:
+    GEAR_RATIO = 20 # 20:1 gear ratio(flywheel spins 20 times for 1 motor rotation)
+
+    def __init__(self):
+        self.leftFly = Motor(Ports.PORT2, True)
+        self.rightFly = Motor(Ports.PORT4, False)
+        self.leftFly.set_stopping(COAST)
+        self.rightFly.set_stopping(COAST)
+        self.vel = 0 # Flywheel speed percantage
+
+    def start_wheel(self,speed):
+        '''Start the flywheel at a given speed'''
+        self.vel = speed
+
+        #spin the motor at the desired speed percentage
+        #since the flywheel spins 20 times faster, we control the motor accordingly
+        self.leftFly.set_velocity(speed,PERCENT)
+        self.rightFly.set_velocity(speed,PERCENT)
+
+        self.leftFly.spin(FORWARD)
+        self.rightFly.spin(FORWARD)
+
+    def stop_flywheel(self):
+        '''stops the flywheel motor'''
+        self.leftFly.stop()
+        self.rightFly.stop()
+    
+    def set_speed(self,new_speed):
+        '''set a new speed to flywheel motors'''
+        self.vel = new_speed
+        self.leftFly.set_velocity(new_speed,PERCENT)
+        self.rightFly.set_velocity(new_speed,PERCENT)
+    
+    def get_speed(self):
+
+        return self.vel
+
+    def calculate_flywheel_speed(self):
+        motorrpm = self.leftFly.velocity(RPM)
+        motorrmp2 = self.rightFly.velocity(RPM)
+        rpm = (motorrpm + motorrmp2)/2
+        flywheelRPM = rpm * self.GEAR_RATIO
+        return flywheelRPM
+
+class Robot:
+    # constants
+    WHEEL_DIAMETER = 2.5 # INCHES
+    ENCODER_TICKS_PER_REV = 960 # TICKS PER FULL REVOLUTION OF VEX IQ MOTORS
+    GEAR_RATIO = 0.5 # 1:2 GEAR RATIO FOR SPEED
+    WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER
+    DISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / (ENCODER_TICKS_PER_REV * GEAR_RATIO)
+    TRACK_WIDTH = 11
+    SDISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / ENCODER_TICKS_PER_REV
+
+    def __init__(self):
+        self.rightMotor = Motor(Ports.PORT1, False)
+        self.leftMotor = Motor(Ports.PORT6, True)
+        self.gyro_3 = Gyro(Ports.PORT3)
+        self.strafeMotor = Motor(Ports.PORT5, False)
+        self.strafeMotor.set_velocity(100,PERCENT)
+        self.flywheel = Flywheel()
+        self.intake  = Intake()
+
+        brain.screen.print("calibration start")
+        brain.screen.next_row()
+        self.gyro_3.calibrate(GyroCalibrationType.NORMAL)
+        wait(2,SECONDS)
+        brain.screen.next_row()
+        brain.screen.print("calibration ended")
+        self.heading_pid = PIDController(kp=0.5,kd=0.1)
+        self.turn_pid = PIDController(kp=0.8,kd=0.1)
+
+
+        self.odometry = Odometry(self)
+
+    def set_drive_speed(self,speedL,speedR):
+        self.leftMotor.set_velocity(speedL,PERCENT)
+        self.rightMotor.set_velocity(speedR,PERCENT)
+
+    def driveF(self):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+
+    def move_forward(self,target_distance,vel = 50):
+        target_ticks = (target_distance / self.DISTANCE_PER_TICK)/2.6667
+        self.leftMotor.set_position(0,DEGREES)
+        self.rightMotor.set_position(0,DEGREES)
+
+        # move forward
+        self.leftMotor.set_velocity(vel,PERCENT)
+        self.rightMotor.set_velocity(vel,PERCENT)
+
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        degrees_moved = 0
+        self.gyro_3.set_rotation(0,DEGREES)
+        while abs(degrees_moved) < target_ticks:
+            current_heading = self.gyro_3.rotation()
+            heading_correction = self.heading_pid.compute(0,current_heading)
+            left_power = vel - heading_correction
+            right_power = vel + heading_correction
+            brain.screen.clear_screen()
+            print("Left P: ",degrees_moved)
+            brain.screen.next_row()
+            brain.screen.print("target ticks:", target_ticks)
+            brain.screen.next_row()
+
+            wait(1,MSEC)
+            brain.screen.next_row()
+            self.leftMotor.set_velocity(left_power,PERCENT)
+            self.rightMotor.set_velocity(right_power,PERCENT)
+            self.odometry.update_position()
+            degrees_moved += leftMotor.position(DEGREES)
+
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+#-----------------------------------------------------------------------------------------
+#                                  FLYWHEEL IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_flywheel(self,speed):
+        self.flywheel.start_wheel(speed)
+    def stop_flywheel(self):
+        self.flywheel.stop_flywheel()
+    def set_flywheel_speed(self,new_speed):
+        self.flywheel.set_speed(new_speed)
+    def get_flywheel_speed(self):
+        return self.flywheel.get_speed()
+    def get_flywheel_rpm(self):
+        return self.flywheel.calculate_flywheel_speed()
+
+#-----------------------------------------------------------------------------------------
+#                                  INTAKE IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_intake(self,speed_pct):
+        self.intake.start_intake(speed_pct)
+    
+    def stop_intake(self):
+        self.intake.stop_intake()
+    
+    def reverse_intake(self, speed_pct):
+        self.intake.reverse_intake(speed_pct)
+    def set_intake_speed(self,speed_pct):
+        self.intake.set_speed(speed_pct)
+    def get_intake_speed(self):
+        return self.intake.get_speed()
+
+class VEXController:
+    def __init__(self,controller,robot,pneumatic):
+        self.controller = controller
+        self.robot = robot
+        self.pneumatic = pneumatic
+        self.flywheel_active = True
+        self.rollers_active = False
+        self.pneumatics_active = False
+        self.robot.start_flywheel(100)
+    
+    def standard_drive(self):
+        self.robot.start_flywheel(0)
+        while True:
+            # forward/backward controller by the left analog stick Axis A
+            forward_speed = self.controller.axisA.position()
+
+            strafe_speed = self.controller.axisB.position()
+
+            turn_speed = self.controller.axisC.position()
+
+            left_motor_speed = forward_speed + turn_speed
+            right_motor_speed = forward_speed - turn_speed
+
+            self.robot.set_drive_speed(left_motor_speed,right_motor_speed)
+            
+            self.robot.strafeMotor.set_velocity(strafe_speed,PERCENT)
+
+            self.robot.driveF()
+            self.robot.strafeMotor.spin(FORWARD)
+            
+            
+            # Roller Activation using R buttons
+            if self.controller.buttonRUp.pressing():
+                self.robot.start_intake(100)
+                
+            elif self.controller.buttonRDown.pressing():
+                self.robot.reverse_intake(100)
+            else:
+                self.robot.stop_intake()
+            if self.controller.buttonLUp.pressing():
+                self.robot.set_flywheel_speed(100)
+            if self.controller.buttonLDown.pressing():
+                self.robot.set_flywheel_speed(50)
+            
+            if self.controller.buttonEUp.pressing():
+                if not self.pneumatics_active:
+                    self.pneumatic.extend(CYLINDER1)
+                    self.pneumatics_active = True
+                    wait(10,MSEC)
+                else:
+                    self.pneumatic.retract(CYLINDER1)
+                    self.pneumatics_active = False
+                    wait(10,MSEC)
+            
+            if self.controller.buttonFUp.pressing():
+                self.robot.set_flywheel_speed(0)
+            elif self.controller.buttonFDown.pressing():
+                self.pneumatic.pump_off()
+            if self.pneumatics_active:
+                self.pneumatic.extend(CYLINDER2)
+            else:
+                self.pneumatic.retract(CYLINDER2)
+            brain.screen.print(self.robot.get_flywheel_speed())
+            wait(10,MSEC)
+            brain.screen.clear_screen()
+
+bobby = Robot()
+Jillur = VEXController(controller,bobby,pneumatic_10)
+Jillur.standard_drive()
