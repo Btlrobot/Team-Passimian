@@ -1,0 +1,406 @@
+#region VEXcode Generated Robot Configuration
+from vex import *
+import urandom
+
+# Brain should be defined by default
+brain=Brain()
+
+# Robot configuration code
+brain_inertial = Inertial()
+rightMotor = Motor(Ports.PORT1, False)
+leftMotor = Motor(Ports.PORT6, True)
+gyro_3 = Gyro(Ports.PORT3)
+strafeMotor = Motor(Ports.PORT5, False)
+leftFly = Motor(Ports.PORT2, False)
+rightFly = Motor(Ports.PORT4, True)
+controller = Controller()
+touchled_9 = Touchled(Ports.PORT9)
+distance_7 = Distance(Ports.PORT7)
+distance_11 = Distance(Ports.PORT11)
+distance_8 = Distance(Ports.PORT8)
+bumper_10 = Bumper(Ports.PORT10)
+
+
+    
+# Initialize random seed 
+
+
+#endregion VEXcode Generated Robot Configuration
+from vex import *
+import urandom
+brain=Brain()
+brain_inertial = Inertial()
+rightMotor = Motor(Ports.PORT1, False)
+leftMotor = Motor(Ports.PORT6, True)
+gyro_3 = Gyro(Ports.PORT3)
+strafeMotor = Motor(Ports.PORT5, False)
+leftFly = Motor(Ports.PORT2, False)
+rightFly = Motor(Ports.PORT4, True)
+controller = Controller()
+touchled_9 = Touchled(Ports.PORT9)
+distance_7 = Distance(Ports.PORT7)
+distance_11 = Distance(Ports.PORT11)
+distance_8 = Distance(Ports.PORT8)
+bumper_10 = Bumper(Ports.PORT10)
+def initializeRandomSeed():
+    wait(100, MSEC)
+    xaxis = brain_inertial.acceleration(XAXIS) * 1000
+    yaxis = brain_inertial.acceleration(YAXIS) * 1000
+    zaxis = brain_inertial.acceleration(ZAXIS) * 1000
+    systemTime = brain.timer.system() * 100
+    urandom.seed(int(xaxis + yaxis + zaxis + systemTime)) 
+initializeRandomSeed()
+import math
+from vex import *
+class Intake:
+    def __init__(self):
+        self.intake = Motor(Ports.PORT12, False)
+        self.speed = 0
+        self.load = False
+
+    def start_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(FORWARD)
+    def stop_intake(self):
+        self.intake.stop()
+    def reverse_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(REVERSE)
+    def set_speed(self,new_speed):
+        self.speed = new_speed
+        self.intake.set_velocity(self.speed,PERCENT)
+        self.intake.spin(FORWARD)
+    def get_speed(self):
+        return self.speed
+class Flywheel:
+    GEAR_RATIO = 20 # 20:1 gear ratio(flywheel spins 20 times for 1 motor rotation)
+    def __init__(self):
+        self.leftFly = Motor(Ports.PORT2, True)
+        self.rightFly = Motor(Ports.PORT4, False)
+        self.leftFly.set_stopping(COAST)
+        self.rightFly.set_stopping(COAST)
+        self.vel = 0 # Flywheel speed percantage
+    def start_wheel(self,speed):
+        '''Start the flywheel at a given speed'''
+        self.vel = speed
+
+        self.leftFly.set_velocity(speed,RPM)    # orignialoly percent
+        self.rightFly.set_velocity(speed,RPM)# orignialoly percent
+
+        self.leftFly.spin(FORWARD)
+        self.rightFly.spin(FORWARD)
+
+    def stop_flywheel(self):
+        '''stops the flywheel motor'''
+        self.leftFly.stop()
+        self.rightFly.stop()
+    
+    def set_speed(self,new_speed):
+        '''set a new speed to flywheel motors'''
+        self.vel = new_speed
+        self.leftFly.set_velocity(new_speed,RPM)# orignialoly percent
+        self.rightFly.set_velocity(new_speed,RPM)# orignialoly percent
+    
+    def get_speed(self):
+
+        return self.vel
+
+    def calculate_flywheel_speed(self):
+        motorrpm = self.leftFly.velocity(RPM)
+        motorrmp2 = self.rightFly.velocity(RPM)
+        rpm = (motorrpm + motorrmp2)/2
+        flywheelRPM = rpm * self.GEAR_RATIO
+        return flywheelRPM
+    
+    def flywheel_rpm(self):
+        motorrpm = self.leftFly.velocity(RPM)
+        motorrmp2 = self.rightFly.velocity(RPM)
+        rpm = (motorrpm + motorrmp2)/2
+        return rpm
+
+class Robot:
+    # constants
+    WHEEL_DIAMETER = 2.5 # INCHES
+    ENCODER_TICKS_PER_REV = 960 # TICKS PER FULL REVOLUTION OF VEX IQ MOTORS
+    GEAR_RATIO = 0.5 # 1:2 GEAR RATIO FOR SPEED
+    WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER
+    DISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / (ENCODER_TICKS_PER_REV * GEAR_RATIO)
+    TRACK_WIDTH = 11
+    SDISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / ENCODER_TICKS_PER_REV
+
+    def __init__(self):
+        self.rightMotor = Motor(Ports.PORT1, False)
+        self.leftMotor = Motor(Ports.PORT6, True)
+        self.gyro_3 = Gyro(Ports.PORT3)
+        self.strafeMotor = Motor(Ports.PORT5, False)
+        self.strafeMotor.set_velocity(100,PERCENT)
+        self.flywheel = Flywheel()
+        self.intake  = Intake()
+
+
+        brain.screen.print("calibration start")
+        brain.screen.next_row()
+        self.gyro_3.calibrate(GyroCalibrationType.NORMAL)
+        wait(2,SECONDS)
+        brain.screen.next_row()
+        brain.screen.print("calibration ended")
+        
+    def set_drive_speed(self,speedL,speedR):
+        self.leftMotor.set_velocity(speedL,PERCENT)
+        self.rightMotor.set_velocity(speedR,PERCENT)
+    '''
+    Anything marked with ^* is additional code to test
+    '''
+    # ^* Reset encoders functions
+    def reset_encoders(self):
+        self.leftMotor.set_position(0,DEGREES)
+        self.rightMotor.set_position(0,DEGREES)
+
+    # ^* get average encoder distances
+    def get_average_encoder_distance(self):
+        left_ticks = self.leftMotor.position(DEGREES) / 360 * self.ENCODER_TICKS_PER_REV
+        right_ticks = self.rightMotor.position(DEGREES) / 360 * self.ENCODER_TICKS_PER_REV
+
+        avg_ticks = (left_ticks + right_ticks) / 2
+
+        return avg_ticks * self.DISTANCE_PER_TICK
+
+    def move_straight_pid(self,target_distance,max_speed,kp=0.2,ki=0.1,kd=0.1):
+        # PID variables
+        self.running = True
+        integral = 0
+        last_error = 0
+        distance_reached = 0
+
+        # reset encoders
+        self.reset_encoders
+        self.gyro_3.set_rotation(0,DEGREES)
+        slow_down_threshold = target_distance * 0.3
+
+        
+        while self.running: # allowable error in inches
+            # calculate error fo distance
+            distance_reached = self.get_average_encoder_distance()
+            distance_error = target_distance - distance_reached
+            if abs(distance_error) <= 0.2:
+                break
+            # gyro correction
+            angle_error = -self.gyro_3.rotation()
+
+            # PID calculations
+            integral += angle_error
+            derivative = angle_error - last_error
+            correction = kp * angle_error + ki * integral + kd * derivative
+            last_error = angle_error
+            if abs(distance_error) < slow_down_threshold:
+                proportional_speed = max_speed*(abs(distance_error)/slow_down_threshold)
+                proportional_speed=max(proportional_speed,20)
+            else:
+                proportional_speed = max_speed
+                left_speed = proportional_speed - correction
+                right_speed = proportional_speed - correction
+                
+            left_speed = max_speed - correction
+            right_speed = max_speed + correction
+            #calculate motor speeds
+            left_speed = max(min(left_speed,max_speed), -max_speed)
+            right_speed = max(min(right_speed,max_speed),-max_speed)
+            self.set_drive_speed(left_speed,right_speed)
+            self.leftMotor.spin(FORWARD)
+            self.rightMotor.spin(FORWARD)
+
+            wait(0.02,SECONDS)
+        # stop motors when distance is reached
+        self.stopD()
+
+    def move_backward_pid(self,target_distance,max_speed,kp=0.2,ki=0.1,kd=0.1):
+        # PID variables
+        self.running = True
+        integral = 0
+        last_error = 0
+        distance_reached = 0
+
+        # reset encoders
+        self.reset_encoders
+        self.gyro_3.set_rotation(0,DEGREES)
+        slow_down_threshold = target_distance * 0.3
+
+        
+        while self.running: # allowable error in inches
+            # calculate error fo distance
+            distance_reached = self.get_average_encoder_distance()
+            distance_error = target_distance - distance_reached
+            if abs(distance_error) <= 0.5:
+                break
+            # gyro correction
+            angle_error = -self.gyro_3.rotation()
+
+            # PID calculations
+            integral += angle_error
+            derivative = angle_error - last_error
+            correction = kp * angle_error + ki * integral + kd * derivative
+            last_error = angle_error
+            if abs(distance_error) < slow_down_threshold:
+                proportional_speed = max_speed*(abs(distance_error)/slow_down_threshold)
+                proportional_speed=max(proportional_speed,20)
+            else:
+                proportional_speed = max_speed
+                left_speed = proportional_speed - correction
+                right_speed = proportional_speed - correction
+                
+            left_speed = -(max_speed - correction)
+            right_speed = -(max_speed + correction)
+            #calculate motor speeds
+            left_speed = max(min(left_speed,-max_speed), -max_speed)
+            right_speed = max(min(right_speed,-max_speed),-max_speed)
+            self.set_drive_speed(left_speed,right_speed)
+            self.leftMotor.spin(FORWARD)
+            self.rightMotor.spin(FORWARD)
+
+            wait(0.02,SECONDS)
+        # stop motors when distance is reached
+        self.stopD()
+
+    def driveF(self,sec):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def strafeLX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(REVERSE)
+        while distance_7.object_distance(INCHES) < dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafeRX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(FORWARD)
+        while distance_7.object_distance(INCHES) > dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafe2LX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(REVERSE)
+        while distance_11.object_distance(INCHES) > dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafe2RX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(FORWARD)
+        while distance_11.object_distance(INCHES) < dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def driveR(self,sec):
+        self.leftMotor.spin(REVERSE)
+        self.rightMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+    
+    def turnL(self,sec):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def turnR(self,sec):
+        self.leftMotor.spin(REVERSE)
+        self.rightMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+    def strafeRight(self,sec):
+        self.strafeMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.strafeMotor.stop()
+
+    def strafeLeft(self,sec):
+        self.strafeMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.strafeMotor.stop()
+
+
+    def moveFX(self,dist,vel=50):
+        target_ticks = (dist / self.DISTANCE_PER_TICK)/2
+        self.leftMotor.set_position(0,DEGREES)
+        self.rightMotor.set_position(0,DEGREES)
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        while self.leftMotor.position(DEGREES) < target_ticks:
+            pass
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def stopD(self):
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def forwardX(self,dist):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        while distance_8.object_distance(INCHES) > dist - 1:
+            pass
+        self.rightMotor.stop()
+        self.leftMotor.stop()
+
+    
+#-----------------------------------------------------------------------------------------
+#                                  FLYWHEEL IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_flywheel(self,speed):
+        self.flywheel.start_wheel(speed)
+    def stop_flywheel(self):
+        self.flywheel.stop_flywheel()
+    def set_flywheel_speed(self,new_speed):
+        self.flywheel.set_speed(new_speed)
+    def get_flywheel_speed(self):
+        return self.flywheel.get_speed()
+    def get_flywheel_rpm(self):
+        return self.flywheel.calculate_flywheel_speed()
+    def flywheely_rpm(self):
+        return self.flywheel.flywheel_rpm()
+
+#-----------------------------------------------------------------------------------------
+#                                  INTAKE IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_intake(self,speed_pct):
+        self.intake.start_intake(speed_pct)
+    
+    def stop_intake(self):
+        self.intake.stop_intake()
+    
+    def reverse_intake(self, speed_pct):
+        self.intake.reverse_intake(speed_pct)
+    def set_intake_speed(self,speed_pct):
+        self.intake.set_speed(speed_pct)
+    def get_intake_speed(self):
+        return self.intake.get_speed()
+
+
+bobby = Robot()
+touchled_9.set_color(Color.RED)
+touchled_9.set_brightness(100)
+
+
+bobby.move_straight_pid(target_distance=24,max_speed=50)
+bobby.move_backward_pid(target_distance=0,max_speed=50)
+
+fir = 0
+
