@@ -1,0 +1,497 @@
+#region VEXcode Generated Robot Configuration
+from vex import *
+import urandom
+
+# Brain should be defined by default
+brain=Brain()
+
+# Robot configuration code
+brain_inertial = Inertial()
+rightMotor = Motor(Ports.PORT1, False)
+leftMotor = Motor(Ports.PORT6, True)
+gyro_3 = Gyro(Ports.PORT3)
+strafeMotor = Motor(Ports.PORT5, False)
+leftFly = Motor(Ports.PORT2, False)
+rightFly = Motor(Ports.PORT4, True)
+controller = Controller()
+touchled_9 = Touchled(Ports.PORT9)
+distance_7 = Distance(Ports.PORT7)
+distance_11 = Distance(Ports.PORT11)
+distance_8 = Distance(Ports.PORT8)
+bumper_10 = Bumper(Ports.PORT10)
+
+
+
+# generating and setting random seed
+def initializeRandomSeed():
+    wait(100, MSEC)
+    xaxis = brain_inertial.acceleration(XAXIS) * 1000
+    yaxis = brain_inertial.acceleration(YAXIS) * 1000
+    zaxis = brain_inertial.acceleration(ZAXIS) * 1000
+    systemTime = brain.timer.system() * 100
+    urandom.seed(int(xaxis + yaxis + zaxis + systemTime)) 
+    
+# Initialize random seed 
+initializeRandomSeed()
+
+#endregion VEXcode Generated Robot Configuration
+
+# ------------------------------------------
+# 
+# 	Project:      VEXcode Project
+# 	Author:       VEX
+# 	Created:
+# 	Description:  VEXcode IQ Python Project
+# 
+# ------------------------------------------
+
+# Library imports
+import math
+from vex import *
+
+class Intake:
+    def __init__(self):
+        self.intake = Motor(Ports.PORT12, False)
+        self.speed = 0
+        self.load = False
+
+    def start_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(FORWARD)
+
+
+    
+
+    def stop_intake(self):
+        self.intake.stop()
+
+    def reverse_intake(self,speed_pct):
+        self.speed = speed_pct
+        self.intake.set_velocity(speed_pct,PERCENT)
+        self.intake.spin(REVERSE)
+
+    def set_speed(self,new_speed):
+        self.speed = new_speed
+        self.intake.set_velocity(self.speed,PERCENT)
+        self.intake.spin(FORWARD)
+
+    def get_speed(self):
+        return self.speed
+
+    
+
+class Flywheel:
+    GEAR_RATIO = 20 # 20:1 gear ratio(flywheel spins 20 times for 1 motor rotation)
+
+    def __init__(self):
+        self.leftFly = Motor(Ports.PORT2, True)
+        self.rightFly = Motor(Ports.PORT4, False)
+        self.leftFly.set_stopping(COAST)
+        self.rightFly.set_stopping(COAST)
+        self.vel = 0 # Flywheel speed percantage
+
+    def start_wheel(self,speed):
+        '''Start the flywheel at a given speed'''
+        self.vel = speed
+
+        #spin the motor at the desired speed percentage
+        #since the flywheel spins 20 times faster, we control the motor accordingly
+        self.leftFly.set_velocity(speed,RPM)    # orignialoly percent
+        self.rightFly.set_velocity(speed,RPM)# orignialoly percent
+
+        self.leftFly.spin(FORWARD)
+        self.rightFly.spin(FORWARD)
+
+    def stop_flywheel(self):
+        '''stops the flywheel motor'''
+        self.leftFly.stop()
+        self.rightFly.stop()
+    
+    def set_speed(self,new_speed):
+        '''set a new speed to flywheel motors'''
+        self.vel = new_speed
+        self.leftFly.set_velocity(new_speed,RPM)# orignialoly percent
+        self.rightFly.set_velocity(new_speed,RPM)# orignialoly percent
+    
+    def get_speed(self):
+
+        return self.vel
+
+    def calculate_flywheel_speed(self):
+        motorrpm = self.leftFly.velocity(RPM)
+        motorrmp2 = self.rightFly.velocity(RPM)
+        rpm = (motorrpm + motorrmp2)/2
+        flywheelRPM = rpm * self.GEAR_RATIO
+        return flywheelRPM
+    
+    def flywheel_rpm(self):
+        motorrpm = self.leftFly.velocity(RPM)
+        motorrmp2 = self.rightFly.velocity(RPM)
+        rpm = (motorrpm + motorrmp2)/2
+        return rpm
+
+class Robot:
+    # constants
+    WHEEL_DIAMETER = 2.5 # INCHES
+    ENCODER_TICKS_PER_REV = 960 # TICKS PER FULL REVOLUTION OF VEX IQ MOTORS
+    GEAR_RATIO = 0.5 # 1:2 GEAR RATIO FOR SPEED
+    WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER
+    DISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / (ENCODER_TICKS_PER_REV * GEAR_RATIO)
+    TRACK_WIDTH = 11
+    SDISTANCE_PER_TICK = WHEEL_CIRCUMFERENCE / ENCODER_TICKS_PER_REV
+
+    def __init__(self):
+        self.rightMotor = Motor(Ports.PORT1, False)
+        self.leftMotor = Motor(Ports.PORT6, True)
+        self.gyro_3 = Gyro(Ports.PORT3)
+        self.strafeMotor = Motor(Ports.PORT5, False)
+        self.strafeMotor.set_velocity(100,PERCENT)
+        self.flywheel = Flywheel()
+        self.intake  = Intake()
+
+        brain.screen.print("calibration start")
+        brain.screen.next_row()
+        self.gyro_3.calibrate(GyroCalibrationType.NORMAL)
+        wait(2,SECONDS)
+        brain.screen.next_row()
+        brain.screen.print("calibration ended")
+        
+    def set_drive_speed(self,speedL,speedR):
+        self.leftMotor.set_velocity(speedL,PERCENT)
+        self.rightMotor.set_velocity(speedR,PERCENT)
+
+    def driveF(self,sec):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def strafeLX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(REVERSE)
+        while distance_7.object_distance(INCHES) < dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafeRX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(FORWARD)
+        while distance_7.object_distance(INCHES) > dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafe2LX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(REVERSE)
+        while distance_11.object_distance(INCHES) > dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def strafe2RX(self,dist,vel=100):
+        self.strafeMotor.set_stopping(BRAKE)
+        self.strafeMotor.set_velocity(vel,PERCENT)
+        self.strafeMotor.set_max_torque(100,PERCENT)
+        strafeMotor.spin(FORWARD)
+        while distance_11.object_distance(INCHES) < dist - 1:
+            pass
+        strafeMotor.stop()
+
+    def driveR(self,sec):
+        self.leftMotor.spin(REVERSE)
+        self.rightMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+    
+    def turnL(self,sec):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def turnR(self,sec):
+        self.leftMotor.spin(REVERSE)
+        self.rightMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+    def strafeRight(self,sec):
+        self.strafeMotor.spin(FORWARD)
+        wait(sec,SECONDS)
+        self.strafeMotor.stop()
+
+    def strafeLeft(self,sec):
+        self.strafeMotor.spin(REVERSE)
+        wait(sec,SECONDS)
+        self.strafeMotor.stop()
+
+
+    def moveFX(self,dist,vel=50):
+        #rot = (dist/self.WHEEL_CIRCUMFERENCE)/2
+        target_ticks = (dist / self.DISTANCE_PER_TICK)/2
+        self.leftMotor.set_position(0,DEGREES)
+        self.rightMotor.set_position(0,DEGREES)
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        while self.leftMotor.position(DEGREES) < target_ticks:
+            pass
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def stopD(self):
+        self.leftMotor.stop()
+        self.rightMotor.stop()
+
+    def forwardX(self,dist):
+        self.leftMotor.spin(FORWARD)
+        self.rightMotor.spin(FORWARD)
+        while distance_8.object_distance(INCHES) > dist - 1:
+            pass
+        self.rightMotor.stop()
+        self.leftMotor.stop()
+
+    
+#-----------------------------------------------------------------------------------------
+#                                  FLYWHEEL IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_flywheel(self,speed):
+        self.flywheel.start_wheel(speed)
+    def stop_flywheel(self):
+        self.flywheel.stop_flywheel()
+    def set_flywheel_speed(self,new_speed):
+        self.flywheel.set_speed(new_speed)
+    def get_flywheel_speed(self):
+        return self.flywheel.get_speed()
+    def get_flywheel_rpm(self):
+        return self.flywheel.calculate_flywheel_speed()
+    def flywheely_rpm(self):
+        return self.flywheel.flywheel_rpm()
+
+#-----------------------------------------------------------------------------------------
+#                                  INTAKE IN ROBOT METHODS
+#-----------------------------------------------------------------------------------------
+    def start_intake(self,speed_pct):
+        self.intake.start_intake(speed_pct)
+    
+    def stop_intake(self):
+        self.intake.stop_intake()
+    
+    def reverse_intake(self, speed_pct):
+        self.intake.reverse_intake(speed_pct)
+    def set_intake_speed(self,speed_pct):
+        self.intake.set_speed(speed_pct)
+    def get_intake_speed(self):
+        return self.intake.get_speed()
+
+
+bobby = Robot()
+touchled_9.set_color(Color.RED)
+touchled_9.set_brightness(100)
+
+fir = 0
+
+
+while True:
+    if touchled_9.pressing() and fir==0:
+        touchled_9.set_color(Color.GREEN)
+        
+        bobby.start_intake(100)
+        bobby.set_drive_speed(80,80)
+        bobby.driveR(0.5)
+        while not bumper_10.pressing():
+            bobby.start_intake(100)
+        bobby.stop_intake()
+        # comment out below
+        bobby.set_drive_speed(80,80)
+        #bobby.turnL(1.58)
+        bobby.turnL(1.27)
+        bobby.start_flywheel(100)
+        bobby.set_drive_speed(100,100)
+        bobby.strafeLX(17.75,100)
+        bobby.set_drive_speed(100,100)
+        bobby.driveF(3.5)
+        bobby.driveR(0.2)
+        #bobby.strafeLX(17.75,100)
+        if distance_7.object_distance(MM) > 17:
+            bobby.strafeRX(17.75,100)
+        else:
+            bobby.strafeLX(17.75,100)
+        bobby.driveF(0.5)
+        bobby.driveF(0.5)
+        bobby.strafeLX(17.75,100)
+        bobby.driveF(0.5)
+        bobby.start_intake(100)
+        wait(2.1,SECONDS)
+        bobby.stop_intake()
+        bobby.driveR(0.2)
+        bobby.driveF(0.75)
+
+        
+        '''
+        if distance_7.object_distance(MM) > 17:
+            bobby.strafeRX(17.75,100)
+        else:
+            bobby.strafeLX(17.75,100)
+        bobby.driveF(0.5)
+        '''
+        bobby.set_drive_speed(80,80)
+        bobby.driveR(0.5)
+        bobby.turnL(0.35)
+        bobby.driveR(1.65)
+
+        while not bumper_10.pressing():
+            bobby.start_intake(100)
+        bobby.stop_intake()
+        
+        bobby.turnR(0.55)
+        bobby.strafe2RX(23)
+        bobby.strafe2LX(23)
+        bobby.start_flywheel(65)
+        bobby.driveF(2.5)
+        bobby.driveR(0.2)
+        if distance_7.object_distance(MM) < 17:
+            bobby.strafe2RX(17.75,100)
+        else:
+            bobby.strafe2LX(18.75,100)
+        bobby.driveF(0.5)
+        bobby.start_intake(100)
+        wait(2.1,SECONDS)
+        bobby.stop_intake()
+        bobby.driveR(0.2)
+        bobby.driveF(0.75)
+        bobby.driveR(1.8)
+        bobby.set_flywheel_speed(95)
+        while not bumper_10.pressing():
+            bobby.start_intake(100)
+        bobby.stop_intake()
+        brain.play_sound(SoundType.ALARM2)
+        bobby.stop_intake()
+        bobby.stop_intake()
+
+        bobby.strafe2RX(17.75)
+        bobby.driveF(2.6)
+        bobby.strafe2RX(17.75)
+        bobby.strafe2RX(17.75)
+        bobby.strafeLX(40.5,100)
+        bobby.start_intake(100)
+        wait(1.8,SECONDS)
+        bobby.driveR(0.2)
+        bobby.driveF(0.75)
+        #----------------------------------------
+        bobby.driveR(1.8)
+        bobby.set_flywheel_speed(100)
+        while not bumper_10.pressing():
+            bobby.start_intake(100)
+        bobby.stop_intake()
+        brain.play_sound(SoundType.ALARM2)
+        bobby.stop_intake()
+        bobby.stop_intake()
+
+        bobby.strafe2RX(17.75)
+        bobby.driveF(2.4)
+        bobby.strafe2RX(17.75)
+        bobby.strafe2RX(17.75)
+        bobby.strafeLX(40.5,100)
+        bobby.start_intake(100)
+        wait(1.8,SECONDS)
+        bobby.driveR(0.2)
+        bobby.driveF(0.75)
+
+        while True:
+            bobby.driveR(1.8)
+            bobby.set_flywheel_speed(65)
+            while not bumper_10.pressing():
+                bobby.start_intake(100)
+            bobby.stop_intake()
+            brain.play_sound(SoundType.ALARM2)
+            bobby.stop_intake()
+            bobby.stop_intake()
+
+            bobby.strafe2RX(17.75)
+            bobby.driveF(2.4)
+            bobby.strafe2RX(17.75)
+            bobby.strafe2RX(17.75)
+            bobby.strafeLX(40.5,100)
+            bobby.start_intake(100)
+            wait(1.8,SECONDS)
+            bobby.driveR(0.2)
+            bobby.driveF(0.75)
+
+        brain.program_stop()
+        
+        brain.play_sound(SoundType.ALARM2)
+        bobby.strafeLX(40.5,100)
+        bobby.strafeLX(40.5,100)
+        bobby.driveF(0.95) # original 0.35
+
+
+        '''
+        bobby.intake.loaded()
+        bobby.start_intake(100)
+        wait(2,SECONDS)
+        bobby.set_flywheel_speed(50)
+        '''
+
+
+
+        #wait(5,SECONDS)
+        # originally never had flywheel change speed
+        #bobby.set_flywheel_speed(100)
+        #bobby.intake.loaded()
+        #bobby.start_intake(100)
+        #wait(2,SECONDS)
+        #bobby.intake.loaded()
+        #bobby.start_intake(100)
+        #wait(2,SECONDS)
+        fir = 1
+        touchled_9.set_color(Color.RED)
+
+        bobby.set_flywheel_speed(120)
+
+        for i in range(2):
+            bobby.set_flywheel_speed(120)
+            bobby.strafe2RX(17.75)
+            bobby.set_drive_speed(100,100)
+            bobby.start_intake(100)
+            # below was originally 2.2
+            bobby.driveR(2.3)
+            bobby.stop_intake()
+            bobby.set_drive_speed(100,100)
+            bobby.driveF(3.1)
+            bobby.strafe2RX(17.75)
+            bobby.strafeLX(40.5,100)
+            bobby.start_intake(100)
+            wait(2.1,SECONDS)
+            bobby.stop_intake()
+            bobby.driveR(0.2)
+            bobby.driveF(0.75)
+        bobby.set_flywheel_speed(65)
+        
+        while True:
+            bobby.set_drive_speed(100,100)
+            bobby.strafe2RX(17.75)
+            bobby.set_drive_speed(100,100)
+            bobby.start_intake(100)
+            # below was originally 2.2
+            bobby.driveR(2.3)
+            bobby.stop_intake()
+            bobby.set_drive_speed(100,100)
+            bobby.driveF(3.6)
+            bobby.strafe2RX(17.75)
+            bobby.strafeLX(40.5,100)
+            bobby.start_intake(100)
+            wait(2.1,SECONDS)
+            bobby.stop_intake()
+            bobby.driveR(0.2)
+            bobby.driveF(0.75)
+    
+    
